@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>旋转上升粒子圣诞树</title>
+    <!-- 从CDN加载p5.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+  </head>
+  <body>
+    <script>
+      // --------------------------------
+      // 1. 雪花类
+      // --------------------------------
+      class Snowflake {
+        constructor() {
+          this.reset();
+        }
+        reset() {
+          this.x = random(width);
+          this.y = random(-200, -50);
+          this.size = random(2, 5);
+          this.speedY = random(1, 3);
+          this.speedX = random(-1, 1);
+        }
+        update() {
+          this.y += this.speedY;
+          this.x += this.speedX * 0.3;
+          if (this.y > height + 10) {
+            this.reset();
+            this.y = -10;
+          }
+        }
+        display() {
+          noStroke();
+          fill(255);
+          circle(this.x, this.y, this.size);
+        }
+      }
+
+      // --------------------------------
+      // 2. 粒子类（从底部螺旋上升 -> 树形）
+      // --------------------------------
+      class TreeParticle {
+        constructor(finalX, finalY, c) {
+          // 最终位置
+          this.finalX = finalX;
+          this.finalY = finalY;
+          this.color = c;
+
+          // 初始位置：在画布下方随机出现
+          this.startX = random(width / 2 - 150, width / 2 + 150);
+          this.startY = height + random(20, 100);
+
+          // 用一个 0~1 的进度值来插值
+          this.progress = 0;
+          // 在0.003~0.008之间随机一个移动速度
+          this.speed = random(0.003, 0.008);
+
+          // 螺旋相关：每个粒子有自己的相位偏移
+          this.angleOffset = random(TWO_PI);
+
+          // 当前位置（初始化为底部）
+          this.x = this.startX;
+          this.y = this.startY;
+        }
+
+        update() {
+          if (this.progress < 1) {
+            this.progress += this.speed;
+            let spiralRadius = 50 * (1 - this.progress);
+            let angle = this.angleOffset + 10 * this.progress;
+
+            let offsetX = spiralRadius * cos(angle);
+            let offsetY = spiralRadius * sin(angle);
+
+            this.x = lerp(this.startX, this.finalX, this.progress) + offsetX;
+            this.y = lerp(this.startY, this.finalY, this.progress) + offsetY;
+          } else {
+            // 已到达目标位置，就固定在最终位置
+            this.x = this.finalX;
+            this.y = this.finalY;
+          }
+        }
+
+        display() {
+          noStroke();
+          fill(this.color);
+          circle(this.x, this.y, 3);
+        }
+      }
+
+      // --------------------------------
+      // 3. 全局变量
+      // --------------------------------
+      let snowflakes = [];
+      let treeParticles = [];
+      let starAngle = 0;  // 星星旋转角度
+
+      // 新增：用来检测是否所有粒子都已到达
+      let treeSettled = false; 
+
+      // 新增：控制文字动画（缩放 + 透明度）
+      let textScale = 0;
+      let textOpacity = 0;
+
+      // --------------------------------
+      // setup()
+      // --------------------------------
+      function setup() {
+        createCanvas(600, 600);
+        colorMode(HSB);
+
+        // 生成若干雪花
+        for (let i = 0; i < 120; i++) {
+          snowflakes.push(new Snowflake());
+        }
+
+        // 生成圣诞树顶点与底部
+        let topY = 100;
+        let botY = 500;
+        let halfBase = 200;
+        let totalLayers = botY - topY;
+
+        // 分行生成“最终位置”并把它传给TreeParticle
+        for (let row = 0; row < totalLayers; row++) {
+          let y = topY + row;
+          let t = row / totalLayers;
+          let centerX = width / 2;
+          // 让树顶窄、树底宽
+          let xLeft  = centerX - t * halfBase;
+          let xRight = centerX + t * halfBase;
+
+          // 为这一行生成粒子
+          let particlesThisRow = 2 + int(3 * t);
+          // 让色相从 0~300（红到紫）
+          let hueVal = map(t, 0, 1, 0, 300);
+
+          for (let i = 0; i < particlesThisRow; i++) {
+            let finalX = random(xLeft, xRight);
+            let finalY = y;
+            let c = color(hueVal, 200 + random(-30, 30), 255);
+            treeParticles.push(new TreeParticle(finalX, finalY, c));
+          }
+        }
+      }
+
+      // --------------------------------
+      // draw()
+      // --------------------------------
+      function draw() {
+        background(0);
+
+        // 更新并绘制雪花
+        for (let flake of snowflakes) {
+          flake.update();
+          flake.display();
+        }
+
+        // 更新并绘制树形粒子
+        let allReached = true;  // 用来检测所有粒子是否到达目标
+        for (let p of treeParticles) {
+          p.update();
+          p.display();
+          if (p.progress < 1) {
+            allReached = false;
+          }
+        }
+
+        // 如果尚未标记为定型，并且所有粒子都到达目标，则标记树已定型
+        if (!treeSettled && allReached) {
+          treeSettled = true;
+        }
+
+        // 绘制并旋转星星（绕其中心旋转）
+        drawRotatingStar(width / 2, 100 - 20, 10);
+
+        // ----------------------
+        // 新增：当树定型后，再显示祝福文字动画
+        // ----------------------
+        if (treeSettled) {
+          // 让文字的缩放从 0~1
+          if (textScale < 1) {
+            textScale += 0.02;
+          }
+          // 让文字透明度从 0~255
+          if (textOpacity < 255) {
+            textOpacity += 5;
+          }
+
+          // 在屏幕中部绘制动画文字
+          drawAnimatedText("Merry Christmas, Ling", width / 2, 300);
+        }
+      }
+
+      // --------------------------------
+      // 绘制旋转星星
+      // --------------------------------
+      function drawRotatingStar(x, y, r) {
+        push();
+        translate(x, y);
+        // 让星星绕其自身中心缓慢旋转
+        rotate(starAngle);
+        starAngle += 0.01; // 旋转速度，可调大或小
+
+        fill(60, 200, 255); // 金色(H=60)
+        noStroke();
+        beginShape();
+        for (let i = 0; i < 10; i++) {
+          let angle = map(i, 0, 10, 0, TWO_PI);
+          let rad = (i % 2 === 0) ? r : r / 2;
+          let sx = cos(angle) * rad;
+          let sy = sin(angle) * rad;
+          vertex(sx, sy);
+        }
+        endShape(CLOSE);
+        pop();
+      }
+
+      // --------------------------------
+      // 绘制文字时的放大+渐显效果
+      // --------------------------------
+      function drawAnimatedText(txt, x, y) {
+        push();
+        // 先将坐标平移到文本要出现的位置
+        translate(x, y);
+
+        // 应用缩放（围绕自身中心缩放）
+        scale(textScale);
+
+        // 将文字对齐方式设为中心
+        textAlign(CENTER, CENTER);
+        textSize(40);
+
+        // 绘制发光叠层
+        // 这里让光晕也受透明度控制，看起来更柔和
+        for (let i = 8; i > 0; i--) {
+          // hue=40, sat=255, bri=255, alpha基于i层数 & textOpacity
+          fill(40, 255, 255, map(i, 8, 0, textOpacity, 0));
+          text(txt, 0, 0);
+        }
+
+        // 最终文字
+        fill(40, 255, 255, textOpacity);
+        text(txt, 0, 0);
+
+        pop();
+      }
+    </script>
+  </body>
+</html>
